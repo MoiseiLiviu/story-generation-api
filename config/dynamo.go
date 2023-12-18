@@ -3,10 +3,12 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 type DynamoConfig struct {
-	TableName string
+	TableName  string
+	TtlMinutes int
 }
 
 func GetDynamoConfig() (*DynamoConfig, error) {
@@ -15,7 +17,18 @@ func GetDynamoConfig() (*DynamoConfig, error) {
 		return nil, fmt.Errorf("DYNAMO_TABLE_NAME must be set")
 	}
 
+	ttlMinutes := os.Getenv("DYNAMO_TTL_MINUTES")
+	if ttlMinutes == "" {
+		return nil, fmt.Errorf("DYNAMO_TTL_MINUTES must be set")
+	}
+
+	ttlNumber, err := strconv.Atoi(ttlMinutes)
+	if err != nil {
+		return nil, fmt.Errorf("DYNAMO_TTL_MINUTES must be a number")
+	}
+
 	return &DynamoConfig{
-		TableName: bucketName,
+		TableName:  bucketName,
+		TtlMinutes: ttlNumber,
 	}, nil
 }

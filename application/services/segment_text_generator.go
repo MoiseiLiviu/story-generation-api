@@ -7,7 +7,6 @@ import (
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/domain"
 	"github.com/google/uuid"
-	"github.com/panjf2000/ants/v2"
 	"github.com/rs/zerolog/log"
 	"regexp"
 	"strings"
@@ -18,14 +17,17 @@ const (
 )
 
 type segmentTextGenerator struct {
+	logger            outbound.LoggerPort
 	scriptGenerator   outbound.StoryScriptGeneratorPort
-	workerPool        *ants.Pool
+	workerPool        outbound.TaskDispatcher
 	descRegexp        *regexp.Regexp
 	punctuationRegexp *regexp.Regexp
 }
 
-func NewSegmentTextGenerator(scriptGenerator outbound.StoryScriptGeneratorPort, workerPool *ants.Pool) inbound.SegmentsGeneratorPort {
+func NewSegmentTextGenerator(logger outbound.LoggerPort, scriptGenerator outbound.StoryScriptGeneratorPort,
+	workerPool outbound.TaskDispatcher) inbound.SegmentsGeneratorPort {
 	return &segmentTextGenerator{
+		logger:            logger,
 		scriptGenerator:   scriptGenerator,
 		workerPool:        workerPool,
 		descRegexp:        regexp.MustCompile(`\[(.*?)]`),
@@ -99,8 +101,9 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 func (s *segmentTextGenerator) extractSegments(buffer string) (resultBuffer string, segments []domain.Segment, err error) {
 	segments = make([]domain.Segment, 0)
 	if s.canExtractImageSegment(buffer) {
-		segment, newBuffer, err := s.extractImageSegment(buffer)
-		if err != nil {
+		segment, newBuffer, extractErr := s.extractImageSegment(buffer)
+		if extractErr != nil {
+			err = extractErr
 			return
 		}
 		resultBuffer, segments, err = s.extractSegments(newBuffer)
@@ -111,8 +114,9 @@ func (s *segmentTextGenerator) extractSegments(buffer string) (resultBuffer stri
 		return
 	}
 	if s.canExtractAudioSegment(buffer) {
-		segment, newBuffer, err := s.extractAudioSegment(buffer)
-		if err != nil {
+		segment, newBuffer, extractErr := s.extractAudioSegment(buffer)
+		if extractErr != nil {
+			err = extractErr
 			return
 		}
 		resultBuffer, segments, err = s.extractSegments(newBuffer)

@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
-	"github.com/rs/zerolog/log"
 	"net/http"
 )
 
@@ -23,12 +22,14 @@ type VoiceSettings struct {
 
 type audioGenerator struct {
 	ContentFetcher
+	logger           outbound.LoggerPort
 	elevenLabsConfig *config.ElevenLabsConfig
 }
 
-func NewAudioGenerator(contentFetcher ContentFetcher, elevenLabsConfig *config.ElevenLabsConfig) outbound.AudioGeneratorPort {
+func NewAudioGenerator(contentFetcher ContentFetcher, elevenLabsConfig *config.ElevenLabsConfig, logger outbound.LoggerPort) outbound.AudioGeneratorPort {
 	return &audioGenerator{
 		ContentFetcher:   contentFetcher,
+		logger:           logger,
 		elevenLabsConfig: elevenLabsConfig,
 	}
 }
@@ -36,10 +37,15 @@ func NewAudioGenerator(contentFetcher ContentFetcher, elevenLabsConfig *config.E
 func (a *audioGenerator) Generate(ctx context.Context, generateAudioParams outbound.GenerateAudioParams) ([]byte, error) {
 	req, err := a.getRequest(ctx, generateAudioParams.Text, generateAudioParams.VoiceID)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Fetching Audio").Str("text", generateAudioParams.Text).Msg("Failed to construct the HTTP request for audio fetching")
+		a.logger.ErrorWithFields(err,
+			"Failed to create the HTTP request",
+			map[string]interface{}{
+				"action": "Creating HTTP Request",
+				"URL":    a.elevenLabsConfig.ApiUrl + "/" + generateAudioParams.VoiceID,
+			})
 		return nil, err
-	}
 
+	}
 	return a.FetchContent(req)
 }
 
@@ -55,13 +61,16 @@ func (a *audioGenerator) getRequest(ctx context.Context, text string, voiceID st
 
 	jsonPayload, err := json.Marshal(reqBody)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Marshalling JSON").Interface("ElevenLabsRequest", reqBody).Msg("Failed to marshal the request body for ElevenLabs API")
+		a.logger.Error(err, "Failed to marshal the request body")
 		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", a.elevenLabsConfig.ApiUrl+"/"+voiceID, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		log.Error().Err(err).Str("action", "Creating HTTP Request").Str("URL", a.elevenLabsConfig.ApiUrl+"/"+voiceID).Msg("Failed to create the HTTP POST request")
+		a.logger.ErrorWithFields(err, "Failed to create the HTTP request", map[string]interface{}{
+			"action": "Creating HTTP Request",
+			"URL":    a.elevenLabsConfig.ApiUrl + "/" + voiceID,
+		})
 		return nil, err
 	}
 

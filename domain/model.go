@@ -31,7 +31,7 @@ type Segment struct {
 }
 
 type SegmentEvent struct {
-	StoryId   string      `json:"story_id"`
+	StoryID   string      `json:"story_id"`
 	SegmentId string      `json:"segment_id"`
 	Text      string      `json:"text"`
 	Type      SegmentType `json:"type"`
@@ -59,7 +59,7 @@ type SegmentWithMediaUrl struct {
 
 func (s SegmentWithMediaUrl) ToEvent() SegmentEvent {
 	return SegmentEvent{
-		StoryId:   s.StoryID,
+		StoryID:   s.StoryID,
 		SegmentId: s.ID,
 		Text:      s.Text,
 		Type:      s.Type,

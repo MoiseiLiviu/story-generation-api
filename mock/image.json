@@ -6,7 +6,6 @@
     "type": "image",
     "ordinal": 0,
     "url": "https://tale-weaver.s3.amazonaws.com/0d085c8d-86ce-4a3b-b700-7e767a41055c.png",
-    "error": null,
     "delay": 7
   },
   {
@@ -16,7 +15,6 @@
     "type": "image",
     "ordinal": 0,
     "url": "https://tale-weaver.s3.amazonaws.com/ff56a81a-2122-41bd-9389-842c2b67a1d2.png",
-    "error": null,
     "delay": 14
   },
   {
@@ -26,7 +24,6 @@
     "type": "image",
     "ordinal": 0,
     "url": "https://tale-weaver.s3.amazonaws.com/49254ec3-0214-48e1-af7c-571c0587f763.png",
-    "error": null,
     "delay": 5
   },
   {
@@ -36,7 +33,6 @@
     "type": "image",
     "ordinal": 0,
     "url": "https://tale-weaver.s3.amazonaws.com/c05a06cf-fd6f-4e4e-9803-d67e9615eb47.png",
-    "error": null,
     "delay": 10
   }
 ]

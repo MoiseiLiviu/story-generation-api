@@ -5,16 +5,17 @@ import (
 	"generate-script-lambda/application/ports/inbound"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/domain"
-	"github.com/panjf2000/ants/v2"
 )
 
 type segmentMediaSaver struct {
+	logger     outbound.LoggerPort
 	mediaStore outbound.SegmentMediaStorePort
-	workerPool *ants.Pool
+	workerPool outbound.TaskDispatcher
 }
 
-func NewSegmentMediaSaver(mediaStore outbound.SegmentMediaStorePort, workerPool *ants.Pool) inbound.SegmentMediaSaverPort {
+func NewSegmentMediaSaver(logger outbound.LoggerPort, mediaStore outbound.SegmentMediaStorePort, workerPool outbound.TaskDispatcher) inbound.SegmentMediaSaverPort {
 	return &segmentMediaSaver{
+		logger:     logger,
 		mediaStore: mediaStore,
 		workerPool: workerPool,
 	}

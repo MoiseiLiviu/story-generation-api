@@ -3,23 +3,25 @@ package services
 import (
 	"context"
 	"generate-script-lambda/application/ports/inbound"
+	"generate-script-lambda/application/ports/outbound"
+	"generate-script-lambda/channel_utils"
 	"generate-script-lambda/domain"
-	"github.com/panjf2000/ants/v2"
-	"sync"
 )
 
 type segmentPipelineOrchestrator struct {
-	workerPool       *ants.Pool
+	logger           outbound.LoggerPort
+	workerPool       outbound.TaskDispatcher
 	segmentGenerator inbound.SegmentsGeneratorPort
 	mediaEnhancer    inbound.SegmentMediaEnhancerPort
 	mediaSaver       inbound.SegmentMediaSaverPort
 	metadataSaver    inbound.SegmentMetadataSaverPort
 }
 
-func NewSegmentPipelineOrchestrator(workerPool *ants.Pool, segmentGenerator inbound.SegmentsGeneratorPort,
-	mediaEnhancer inbound.SegmentMediaEnhancerPort, mediaSaver inbound.SegmentMediaSaverPort,
-	metadataSaver inbound.SegmentMetadataSaverPort) inbound.SegmentPipelineOrchestrator {
+func NewSegmentPipelineOrchestrator(logger outbound.LoggerPort, workerPool outbound.TaskDispatcher,
+	segmentGenerator inbound.SegmentsGeneratorPort, mediaEnhancer inbound.SegmentMediaEnhancerPort,
+	mediaSaver inbound.SegmentMediaSaverPort, metadataSaver inbound.SegmentMetadataSaverPort) inbound.SegmentPipelineOrchestrator {
 	return &segmentPipelineOrchestrator{
+		logger:           logger,
 		workerPool:       workerPool,
 		segmentGenerator: segmentGenerator,
 		mediaEnhancer:    mediaEnhancer,
@@ -37,46 +39,22 @@ func (s *segmentPipelineOrchestrator) StartPipeline(ctx context.Context, request
 		StoryID: request.StoryID,
 	})
 
-	segmentWithMediaCh, mediaEnhancerErrCh := s.mediaEnhancer.Generate(newCtx, segmentCh, request.VoiceID)
+	segmentWithMediaCh, mediaEnhancerErrCh := s.mediaEnhancer.Enhance(newCtx, segmentCh, request.VoiceID)
 
 	segmentWithMediaUrlCh, mediaSaverErrCh := s.mediaSaver.Save(newCtx, segmentWithMediaCh, request.StoryID)
 
 	segmentEventsCh, metadataSaverErrCh := s.metadataSaver.Save(newCtx, segmentWithMediaUrlCh)
 
-	mergerErrCh := s.mergeErrorChannels(segmentGeneratorErrCh, mediaEnhancerErrCh, mediaSaverErrCh, metadataSaverErrCh)
+	mergerErrCh, err := channel_utils.MergeChannels(s.workerPool, segmentGeneratorErrCh, mediaEnhancerErrCh, mediaSaverErrCh, metadataSaverErrCh)
+
+	if err != nil {
+		out := make(chan domain.SegmentEvent)
+		errCh := make(chan error)
+		errCh <- err
+		close(out)
+		close(errCh)
+		return out, errCh
+	}
 
 	return segmentEventsCh, mergerErrCh
-}
-
-func (s *segmentPipelineOrchestrator) mergeErrorChannels(channels ...<-chan error) <-chan error {
-	var wg sync.WaitGroup
-	merged := make(chan error)
-
-	output := func(c <-chan error) {
-		for err := range c {
-			merged <- err
-		}
-		wg.Done()
-	}
-
-	wg.Add(len(channels))
-	for _, c := range channels {
-		err := s.workerPool.Submit(func() {
-			output(c)
-		})
-		if err != nil {
-			merged <- err
-			wg.Done()
-		}
-	}
-
-	err := s.workerPool.Submit(func() {
-		wg.Wait()
-		close(merged)
-	})
-	if err != nil {
-		merged <- err
-	}
-
-	return merged
 }

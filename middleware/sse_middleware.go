@@ -32,7 +32,7 @@ func SSEMiddleware(workerPool *ants.Pool) gin.HandlerFunc {
 			}
 		})
 		if err != nil {
-			c.AbortWithStatusJSON(500, gin.H{"error": err.Error()})
+			c.AbortWithStatusJSON(500, gin.H{"error": "internal server error"})
 			return
 		}
 

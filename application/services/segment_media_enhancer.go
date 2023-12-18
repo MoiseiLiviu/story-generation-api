@@ -5,26 +5,27 @@ import (
 	"generate-script-lambda/application/ports/inbound"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/domain"
-	"github.com/panjf2000/ants/v2"
 	"sync"
 )
 
 type segmentMediaEnhancer struct {
+	logger         outbound.LoggerPort
 	imageGenerator outbound.ImageGeneratorPort
 	audioGenerator outbound.AudioGeneratorPort
-	workerPool     *ants.Pool
+	workerPool     outbound.TaskDispatcher
 }
 
-func NewSegmentMediaEnhancer(imageGenerator outbound.ImageGeneratorPort, audioGenerator outbound.AudioGeneratorPort,
-	workerPool *ants.Pool) inbound.SegmentMediaEnhancerPort {
+func NewSegmentMediaEnhancer(logger outbound.LoggerPort, imageGenerator outbound.ImageGeneratorPort, audioGenerator outbound.AudioGeneratorPort,
+	workerPool outbound.TaskDispatcher) inbound.SegmentMediaEnhancerPort {
 	return &segmentMediaEnhancer{
+		logger:         logger,
 		imageGenerator: imageGenerator,
 		audioGenerator: audioGenerator,
 		workerPool:     workerPool,
 	}
 }
 
-func (s *segmentMediaEnhancer) Generate(ctx context.Context, segmentCh <-chan domain.Segment, voiceID string) (<-chan domain.SegmentWithMedia, <-chan error) {
+func (s *segmentMediaEnhancer) Enhance(ctx context.Context, segmentCh <-chan domain.Segment, voiceID string) (<-chan domain.SegmentWithMedia, <-chan error) {
 	out := make(chan domain.SegmentWithMedia)
 	errCh := make(chan error)
 
@@ -66,6 +67,7 @@ func (s *segmentMediaEnhancer) Generate(ctx context.Context, segmentCh <-chan do
 						}
 					}
 				})
+
 				if err != nil {
 					wg.Done()
 					errCh <- err

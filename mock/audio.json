@@ -6,7 +6,6 @@
     "type": "audio",
     "ordinal": 1,
     "url": "https://tale-weaver.s3.amazonaws.com/18bc5898-858d-406d-a023-9a020529f947.mp3",
-    "error": null,
     "delay": 15
   },
   {
@@ -16,7 +15,6 @@
     "type": "audio",
     "ordinal": 2,
     "url": "https://tale-weaver.s3.amazonaws.com/0f5d2ca7-d0cb-464e-bcab-b416c801ad20.mp3",
-    "error": null,
     "delay": 8
   },
   {
@@ -26,7 +24,6 @@
     "type": "audio",
     "ordinal": 3,
     "url": "https://tale-weaver.s3.amazonaws.com/b529519b-d481-4555-bd27-4968578642f5.mp3",
-    "error": null,
     "delay": 3
   },
   {
@@ -36,7 +33,6 @@
     "type": "audio",
     "ordinal": 4,
     "url": "https://tale-weaver.s3.amazonaws.com/9d3f9ff9-d4c5-494d-a6e4-72341490977f.mp3",
-    "error": null,
     "delay": 7
   },
   {
@@ -46,7 +42,6 @@
     "type": "audio",
     "ordinal": 5,
     "url": "https://tale-weaver.s3.amazonaws.com/267480fa-2ca5-48cd-a05e-0db85b031fbd.mp3",
-    "error": null,
     "delay": 4
   },
   {
@@ -56,7 +51,6 @@
     "type": "audio",
     "ordinal": 6,
     "url": "https://tale-weaver.s3.amazonaws.com/ef8c2635-16e0-4b60-b49a-0cc0b2c58912.mp3",
-    "error": null,
     "delay": 6
   },
   {
@@ -66,7 +60,6 @@
     "type": "audio",
     "ordinal": 7,
     "url": "https://tale-weaver.s3.amazonaws.com/0b7ec6d2-5331-42b4-b91e-c51b168c7b97.mp3",
-    "error": null,
     "delay": 5
   },
   {
@@ -76,7 +69,6 @@
     "type": "audio",
     "ordinal": 8,
     "url": "https://tale-weaver.s3.amazonaws.com/808ea969-e094-41e3-9f76-39c566995296.mp3",
-    "error": null,
     "delay": 7
   },
   {
@@ -86,7 +78,6 @@
     "type": "audio",
     "ordinal": 9,
     "url": "https://tale-weaver.s3.amazonaws.com/e21316a5-1221-482d-aaf4-e1b36912f7fe.mp3",
-    "error": null,
     "delay": 6
   }
 ]

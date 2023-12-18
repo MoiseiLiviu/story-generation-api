@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
-	"github.com/rs/zerolog/log"
 	"net/http"
 )
 
@@ -27,11 +26,13 @@ type DalleApiResponse struct {
 
 type imageGenerator struct {
 	ContentFetcher
+	logger      outbound.LoggerPort
 	dalleConfig *config.DaLLeConfig
 }
 
-func NewImageGenerator(contentFetcher ContentFetcher, dalleConfig *config.DaLLeConfig) outbound.ImageGeneratorPort {
+func NewImageGenerator(contentFetcher ContentFetcher, dalleConfig *config.DaLLeConfig, logger outbound.LoggerPort) outbound.ImageGeneratorPort {
 	return &imageGenerator{
+		logger:         logger,
 		ContentFetcher: contentFetcher,
 		dalleConfig:    dalleConfig,
 	}
@@ -40,7 +41,7 @@ func NewImageGenerator(contentFetcher ContentFetcher, dalleConfig *config.DaLLeC
 func (i *imageGenerator) Generate(ctx context.Context, description string) ([]byte, error) {
 	req, err := i.getRequest(ctx, description)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Constructing Request").Str("description", description).Msg("Failed to construct the HTTP request for image fetching")
+		i.logger.Error(err, "Failed to create the HTTP request")
 		return nil, err
 	}
 
@@ -48,19 +49,19 @@ func (i *imageGenerator) Generate(ctx context.Context, description string) ([]by
 
 	rawRes, err := i.FetchContent(req)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Fetching Content").Str("description", description).Msg("Failed to fetch the content from DALL·E API")
+		i.logger.Error(err, "Failed to fetch the content")
 		return nil, err
 	}
 
 	err = json.Unmarshal(rawRes, &dalleRes)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Unmarshalling JSON").Str("description", description).Msg("Failed to unmarshal the response from DALL·E API")
+		i.logger.Error(err, "Failed to unmarshal the response")
 		return nil, err
 	}
 
 	decodedImage, err := base64.StdEncoding.DecodeString(dalleRes.Data[0].B64Json)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Decoding Base64").Str("description", description).Msg("Failed to decode the image from DALL·E API")
+		i.logger.Error(err, "Failed to decode the image")
 		return nil, err
 	}
 
@@ -77,13 +78,13 @@ func (i *imageGenerator) getRequest(ctx context.Context, text string) (*http.Req
 
 	jsonPayload, err := json.Marshal(reqBody)
 	if err != nil {
-		log.Error().Err(err).Str("action", "Marshalling JSON").Interface("DalleApiRequest", reqBody).Msg("Failed to marshal the request body for DALL·E API")
+		i.logger.Error(err, "Failed to marshal the request body")
 		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", i.dalleConfig.ApiUrl, bytes.NewBuffer(jsonPayload))
 	if err != nil {
-		log.Error().Err(err).Str("action", "Creating HTTP Request").Str("URL", i.dalleConfig.ApiUrl).Msg("Failed to create the HTTP POST request")
+		i.logger.Error(err, "Failed to create the HTTP request")
 		return nil, err
 	}
 

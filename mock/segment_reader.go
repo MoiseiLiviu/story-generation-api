@@ -1,8 +1,8 @@
-package main
+package mock_generator
 
 import (
 	"encoding/json"
-	"github.com/rs/zerolog/log"
+	"generate-script-lambda/application/ports/outbound"
 	"os"
 )
 
@@ -11,10 +11,13 @@ type SegmentReader interface {
 }
 
 type fileSegmentReader struct {
+	logger outbound.LoggerPort
 }
 
-func NewFileSegmentReader() SegmentReader {
-	return &fileSegmentReader{}
+func NewFileSegmentReader(logger outbound.LoggerPort) SegmentReader {
+	return &fileSegmentReader{
+		logger: logger,
+	}
 }
 
 func (f *fileSegmentReader) Read(fileName string) ([]MockSegment, error) {
@@ -36,13 +39,13 @@ func (f *fileSegmentReader) readJSONFile(fileName string) ([]MockSegment, error)
 	defer func(file *os.File) {
 		err := file.Close()
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to close file")
+			f.logger.Error(err, "failed to close file")
 		}
 	}(file)
 
 	var events []MockSegment
 	if err := json.NewDecoder(file).Decode(&events); err != nil {
-		log.Err(err).Msg("Failed to decode JSON")
+		f.logger.Error(err, "failed to decode json")
 		return nil, err
 	}
 

@@ -8,8 +8,6 @@ import (
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
 	"github.com/donovanhide/eventsource"
-	"github.com/panjf2000/ants/v2"
-	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 )
@@ -40,13 +38,15 @@ type chatGptResponseChoice struct {
 }
 
 type storyScriptGenerator struct {
+	logger        outbound.LoggerPort
 	wordsPerStory int
 	gptConfig     *config.GptConfig
-	workerPool    *ants.Pool
+	workerPool    outbound.TaskDispatcher
 }
 
-func NewStoryScriptGenerator(wordsPerStory int, gptConfig *config.GptConfig, workerPool *ants.Pool) outbound.StoryScriptGeneratorPort {
+func NewStoryScriptGenerator(wordsPerStory int, gptConfig *config.GptConfig, workerPool outbound.TaskDispatcher, logger outbound.LoggerPort) outbound.StoryScriptGeneratorPort {
 	return &storyScriptGenerator{
+		logger:        logger,
 		wordsPerStory: wordsPerStory,
 		gptConfig:     gptConfig,
 		workerPool:    workerPool,
@@ -67,14 +67,14 @@ func (s *storyScriptGenerator) Generate(ctx context.Context, input string) (<-ch
 		defer cancel()
 		req, err := s.createRequest(ctx, input)
 		if err != nil {
-			log.Error().Err(err).Str("input", input).Msg("Failed to create request for streaming script")
+			s.logger.Error(err, "Failed to create HTTP request for script stream")
 			errCh <- err
 			return
 		}
 
 		stream, err := eventsource.SubscribeWithRequest("", req)
 		if err != nil {
-			log.Error().Err(err).Msg("Failed to subscribe to script stream")
+			s.logger.Error(err, "Failed to subscribe to script stream")
 			errCh <- err
 			return
 		}
@@ -96,14 +96,15 @@ func (s *storyScriptGenerator) Generate(ctx context.Context, input string) (<-ch
 				retryCount = 0
 			case err := <-stream.Errors:
 				if err == io.EOF {
-					log.Info().Msg("Reached end of stream")
+					s.logger.Info("Script stream closed")
 					return
 				} else if retryCount < MaxRetries {
-					log.Warn().Err(err).Int("retryCount", retryCount).Msg("Error occurred during streaming, will retry")
+					s.logger.ErrorWithFields(err, "Error occurred during streaming, retrying", map[string]interface{}{
+						"retry_count": retryCount})
 					retryCount++
 					continue
 				}
-				log.Error().Err(err).Msg("Maximum retries reached for streaming script")
+				s.logger.Error(err, "Error occurred during streaming, max retries reached")
 				errCh <- err
 				cancel()
 				return
@@ -111,7 +112,7 @@ func (s *storyScriptGenerator) Generate(ctx context.Context, input string) (<-ch
 		}
 	})
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to submit task to worker pool for streaming script")
+		s.logger.Error(err, "Failed to submit task to worker pool")
 		errCh <- err
 	}
 
@@ -122,7 +123,7 @@ func (s *storyScriptGenerator) extractPayload(event eventsource.Event) (string, 
 	var chunkBody chatGptChunkBody
 	err := json.Unmarshal([]byte(event.Data()), &chunkBody)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to unmarshal script stream event data")
+		s.logger.Error(err, "Failed to unmarshal event data")
 		return "", err
 	}
 	fmt.Println(fmt.Sprintf("Event content: %s", chunkBody.Choices[0].Delta.Content))
@@ -153,13 +154,13 @@ func (s *storyScriptGenerator) createRequest(ctx context.Context, input string) 
 
 	payloadBytes, err := json.Marshal(promptReq)
 	if err != nil {
-		log.Error().Err(err).Msg("Error encoding request payload for script stream")
+		s.logger.Error(err, "Failed to marshal the request body")
 		return nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "POST", s.gptConfig.ApiUrl, bytes.NewBuffer(payloadBytes))
 	if err != nil {
-		log.Error().Err(err).Msg("Error creating HTTP request for script stream")
+		s.logger.Error(err, "Failed to create the HTTP request")
 		return nil, err
 	}
 

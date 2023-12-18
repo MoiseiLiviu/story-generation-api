@@ -1,11 +1,13 @@
 package main
 
 import (
+	"fmt"
 	"generate-script-lambda/application/services"
 	"generate-script-lambda/config"
 	"generate-script-lambda/infrastructure/adapters"
 	"generate-script-lambda/infrastructure/gin_interface/controllers"
 	"generate-script-lambda/middleware"
+	mockgenerator "generate-script-lambda/mock"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -67,7 +69,13 @@ func main() {
 		log.Fatal().Msg("JWKS_URL is not set!")
 	}
 
-	workerPool, err := ants.NewPool(120)
+	zeroLogger := adapters.NewZerologWrapper()
+
+	panicHandler := func(p interface{}) {
+		zeroLogger.Error(fmt.Errorf("%v", p), "Panic in worker pool")
+	}
+
+	workerPool, err := ants.NewPool(120, ants.WithPanicHandler(panicHandler))
 	defer workerPool.Release()
 
 	if err != nil {
@@ -81,32 +89,32 @@ func main() {
 	s3Client := s3.New(sess)
 	dynamoClient := dynamodb.New(sess)
 
-	contentFetcher := adapters.NewContentFetcher()
+	contentFetcher := adapters.NewContentFetcher(zeroLogger)
 
-	audioGenerator := adapters.NewAudioGenerator(contentFetcher, elevenLabsConfig)
-	imageGenerator := adapters.NewImageGenerator(contentFetcher, dalleConfig)
+	audioGenerator := adapters.NewAudioGenerator(contentFetcher, elevenLabsConfig, zeroLogger)
+	imageGenerator := adapters.NewImageGenerator(contentFetcher, dalleConfig, zeroLogger)
 
-	authorizer := adapters.NewCognitoAuthorizer(authConfig)
+	authorizer := adapters.NewCognitoAuthorizer(zeroLogger, authConfig)
 
-	dynamoCache := adapters.NewDynamoCache(dynamoClient, dynamoConfig)
+	dynamoCache := adapters.NewDynamoCache(zeroLogger, dynamoClient, dynamoConfig)
 
-	s3MediaStore := adapters.NewS3SegmentMediaStore(s3Client, s3Config)
+	s3MediaStore := adapters.NewS3SegmentMediaStore(s3Client, s3Config, zeroLogger)
 
-	storySaver := adapters.NewStorySaver(storyApiUrl, authorizer)
+	storySaver := adapters.NewStorySaver(storyApiUrl, authorizer, zeroLogger)
 
-	storyScriptGenerator := adapters.NewStoryScriptGenerator(scriptStreamerWordsPerStory, gptConfig, workerPool)
+	storyScriptGenerator := adapters.NewStoryScriptGenerator(scriptStreamerWordsPerStory, gptConfig, workerPool, zeroLogger)
 
-	segmentMediaEnhancer := services.NewSegmentMediaEnhancer(imageGenerator, audioGenerator, workerPool)
+	segmentMediaEnhancer := services.NewSegmentMediaEnhancer(zeroLogger, imageGenerator, audioGenerator, workerPool)
 
-	segmentMetadataSaver := services.NewSegmentMetadataSaver(workerPool, dynamoCache)
+	segmentMetadataSaver := services.NewSegmentMetadataSaver(zeroLogger, workerPool, dynamoCache)
 
-	segmentMediaSaver := services.NewSegmentMediaSaver(s3MediaStore, workerPool)
+	segmentMediaSaver := services.NewSegmentMediaSaver(zeroLogger, s3MediaStore, workerPool)
 
-	segmentTextGenerator := services.NewSegmentTextGenerator(storyScriptGenerator, workerPool)
+	segmentTextGenerator := services.NewSegmentTextGenerator(zeroLogger, storyScriptGenerator, workerPool)
 
-	storyCreator := services.NewSegmentPipelineOrchestrator(workerPool, segmentTextGenerator, segmentMediaEnhancer, segmentMediaSaver, segmentMetadataSaver)
+	storyCreator := services.NewSegmentPipelineOrchestrator(zeroLogger, workerPool, segmentTextGenerator, segmentMediaEnhancer, segmentMediaSaver, segmentMetadataSaver)
 
-	storySegmentController := controllers.NewStorySegmentsController(workerPool, storyCreator, storySaver)
+	storySegmentController := controllers.NewStorySegmentsController(zeroLogger, workerPool, storyCreator, storySaver)
 
 	router := gin.Default()
 
@@ -122,6 +130,8 @@ func main() {
 
 	router.Use(authHandler.AuthMiddleware())
 	router.Use(middleware.SSEMiddleware(workerPool))
+
+	mockgenerator.Init(router, workerPool, segmentMetadataSaver, storySaver, zeroLogger)
 
 	storySegmentController.RegisterRoutes(router)
 

@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"generate-script-lambda/application/ports/outbound"
-	"github.com/rs/zerolog/log"
 	"io"
 	"net/http"
 )
@@ -18,11 +18,13 @@ type StoryRequest struct {
 
 type storySaver struct {
 	storyApiUrl string
+	logger      outbound.LoggerPort
 	authorizer  Authorizer
 }
 
-func NewStorySaver(storyApiUrl string, authorizer Authorizer) outbound.StorySaverPort {
+func NewStorySaver(storyApiUrl string, authorizer Authorizer, logger outbound.LoggerPort) outbound.StorySaverPort {
 	return &storySaver{
+		logger:      logger,
 		storyApiUrl: storyApiUrl,
 		authorizer:  authorizer,
 	}
@@ -31,7 +33,7 @@ func NewStorySaver(storyApiUrl string, authorizer Authorizer) outbound.StorySave
 func (s *storySaver) Save(ctx context.Context, params outbound.SaveStoryParams) error {
 	token, err := s.authorizer.Authorize(ctx)
 	if err != nil {
-		log.Err(err).Msg("Failed to authorize")
+		s.logger.Error(err, "Failed to authorize")
 		return err
 	}
 	storyRequest := StoryRequest{
@@ -41,13 +43,13 @@ func (s *storySaver) Save(ctx context.Context, params outbound.SaveStoryParams) 
 	}
 	payload, err := json.Marshal(storyRequest)
 	if err != nil {
-		log.Err(err).Msg("Failed to marshal story request")
+		s.logger.Error(err, "Failed to marshal the request")
 		return err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.storyApiUrl, bytes.NewReader(payload))
 	if err != nil {
-		log.Err(err).Msg("Failed to create request")
+		s.logger.Error(err, "Failed to create the HTTP request")
 	}
 
 	req.Header.Add("Authorization", "Bearer "+token)
@@ -55,20 +57,31 @@ func (s *storySaver) Save(ctx context.Context, params outbound.SaveStoryParams) 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Err(err).Msg("Failed to send request")
+		s.logger.Error(err, "Failed to send the HTTP request")
 		return err
 	}
 
 	defer func(closer io.ReadCloser) {
 		err := closer.Close()
 		if err != nil {
-			log.Err(err).Msg("Failed to close response body")
+			s.logger.Error(err, "Failed to close the response body")
 		}
 	}(resp.Body)
 
 	if resp.StatusCode != http.StatusCreated {
-		log.Error().Msgf("Received unexpected status code %d", resp.StatusCode)
-		return err
+		bodyPayload, err := io.ReadAll(resp.Body)
+		if err != nil {
+			s.logger.Error(err, "Failed to read the response body")
+			return err
+		}
+		message := string(bodyPayload)
+		s.logger.ErrorWithFields(err, "HTTP request returned non-OK status code", map[string]interface{}{
+			"method": req.Method,
+			"URL":    req.URL.String(),
+			"status": resp.StatusCode,
+			"body":   message,
+		})
+		return fmt.Errorf("save story request failed with status code: %d", resp.StatusCode)
 	}
 
 	return nil
