@@ -38,7 +38,7 @@ func (s *segmentPipelineOrchestrator) StartPipeline(ctx context.Context, request
 
 	segmentWithMediaCh, mediaEnhancerErrCh := s.mediaEnhancer.Enhance(ctx, segmentCh, request.VoiceID)
 
-	segmentWithMediaUrlCh, mediaSaverErrCh := s.mediaSaver.Save(ctx, segmentWithMediaCh, request.StoryID)
+	segmentWithMediaUrlCh, mediaSaverErrCh := s.mediaSaver.Save(ctx, segmentWithMediaCh, request.UserID)
 
 	segmentEventsCh, metadataSaverErrCh := s.metadataSaver.Save(ctx, segmentWithMediaUrlCh)
 

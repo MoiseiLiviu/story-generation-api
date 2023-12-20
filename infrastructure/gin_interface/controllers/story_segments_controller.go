@@ -53,6 +53,7 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 		Input:   createStoryRequest.Input,
 		StoryID: storyID,
 		VoiceID: createStoryRequest.VoiceID,
+		UserID:  userID,
 	})
 
 	err := s.workerPool.Submit(func() {

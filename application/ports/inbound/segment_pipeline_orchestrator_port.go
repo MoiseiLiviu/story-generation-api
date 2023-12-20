@@ -9,6 +9,7 @@ type StartPipelineParams struct {
 	StoryID string
 	Input   string
 	VoiceID string
+	UserID  string
 }
 
 type SegmentPipelineOrchestrator interface {
