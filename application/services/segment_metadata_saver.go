@@ -32,11 +32,14 @@ func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.
 		defer close(out)
 		defer close(errCh)
 		defer cancel()
-		for segmentWithMedia := range segments {
+		for {
 			select {
 			case <-newCtx.Done():
 				return
-			default:
+			case segmentWithMedia, ok := <-segments:
+				if !ok {
+					return
+				}
 				err := s.segmentCache.Save(newCtx, segmentWithMedia)
 				if err != nil {
 					errCh <- err
@@ -50,7 +53,6 @@ func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.
 				}
 			}
 		}
-		s.logger.Debug("segment metadata saving complete")
 	})
 
 	if err != nil {

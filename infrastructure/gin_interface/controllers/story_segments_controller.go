@@ -8,6 +8,7 @@ import (
 	"generate-script-lambda/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"sync"
 )
 
 type StorySegmentsController interface {
@@ -55,14 +56,18 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 	})
 
 	err := s.workerPool.Submit(func() {
+		var sendErrOnce sync.Once
 		for err := range errCh {
 			cancel()
 			s.logger.Error(err, "error in pipeline")
+			sendErrOnce.Do(func() {
+				c.SSEvent("error", "internal server error")
+				c.Abort()
+			})
 		}
-		c.SSEvent("error", "internal server error")
 	})
 	if err != nil {
-		s.logger.Error(err, "failed to submit error handler")
+		s.logger.Error(err, "failed to submit worker")
 		c.SSEvent("error", "internal server error")
 		return
 	}
@@ -74,12 +79,11 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 		default:
 			c.SSEvent("segment", event)
 		}
-
-		if err != nil {
-			c.SSEvent("error", "internal server error")
-			return
-		}
 	}
+
+	s.logger.InfoWithFields("segments generation complete", map[string]interface{}{
+		"story_id": storyID,
+	})
 
 	err = s.storySaver.Save(newCtx, outbound.SaveStoryParams{
 		ID:     storyID,
@@ -90,6 +94,10 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 		s.logger.Error(err, "failed to save story")
 		c.SSEvent("error", "internal server error")
 		return
+	} else {
+		s.logger.InfoWithFields("story saved", map[string]interface{}{
+			"story_id": storyID,
+		})
 	}
 
 	c.SSEvent("generation_complete", nil)

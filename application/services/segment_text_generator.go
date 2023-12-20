@@ -39,11 +39,11 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 	log.Debug().Msg("Starting creating script segments")
 
 	out := make(chan domain.Segment)
-	errCh := make(chan error)
+	errCh := make(chan error, 5)
 
 	newCtx, cancel := context.WithCancel(ctx)
 
-	segmentCh, scriptErr := s.scriptGenerator.Generate(newCtx, params.Input)
+	tokenCh, scriptErr := s.scriptGenerator.Generate(newCtx, params.Input)
 
 	err := s.workerPool.Submit(func() {
 		defer close(out)
@@ -56,12 +56,14 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 
 		for {
 			select {
-			case err := <-scriptErr:
-				errCh <- err
-				return
+			case err, ok := <-scriptErr:
+				if ok {
+					errCh <- err
+					return
+				}
 			case <-newCtx.Done():
 				return
-			case token, ok := <-segmentCh:
+			case token, ok := <-tokenCh:
 				if ok {
 					builder.WriteString(token)
 					newBuffer, segments, err := s.extractSegments(builder.String())
@@ -84,8 +86,10 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 						out <- segment
 					}
 				} else {
-					out <- domain.NewSegment(builder.String(), domain.AudioSegmentType, uuid.NewString(), params.StoryID, audioSegmentsCounter)
-					log.Info().Msg("Finished reading from stream.")
+					if builder.Len() > 0 {
+						out <- domain.NewSegment(builder.String(), domain.AudioSegmentType, uuid.NewString(), params.StoryID, audioSegmentsCounter)
+						log.Info().Msg("Finished reading from stream.")
+					}
 					return
 				}
 			}
@@ -111,6 +115,7 @@ func (s *segmentTextGenerator) extractSegments(buffer string) (resultBuffer stri
 		return
 	}
 	if s.isParserInsideBrackets(buffer) {
+		resultBuffer = buffer
 		return
 	}
 	if s.canExtractAudioSegment(buffer) {
@@ -123,6 +128,7 @@ func (s *segmentTextGenerator) extractSegments(buffer string) (resultBuffer stri
 		segments = append([]domain.Segment{segment}, segments...)
 		return
 	}
+	resultBuffer = buffer
 
 	return
 }
@@ -181,7 +187,7 @@ func (s *segmentTextGenerator) extractImageSegment(buffer string) (imageSegment 
 
 	imageSegment = domain.Segment{
 		Text: match[1],
-		Type: domain.AudioSegmentType,
+		Type: domain.ImageSegmentType,
 		ID:   uuid.NewString(),
 	}
 

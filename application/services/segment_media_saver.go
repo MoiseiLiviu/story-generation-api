@@ -31,11 +31,14 @@ func (s *segmentMediaSaver) Save(ctx context.Context, segmentCh <-chan domain.Se
 		defer close(errCh)
 		defer cancel()
 
-		for segment := range segmentCh {
+		for {
 			select {
 			case <-newCtx.Done():
 				return
-			default:
+			case segment, ok := <-segmentCh:
+				if !ok {
+					return
+				}
 				url, err := s.mediaStore.Save(newCtx, segment, userID)
 				if err != nil {
 					errCh <- err

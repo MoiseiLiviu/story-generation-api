@@ -33,7 +33,7 @@ func GetElevenLabsConfig() (*ElevenLabsConfig, error) {
 	}
 	stabilityVal, err := strconv.ParseFloat(stability, 32)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse eleven labs stability")
+		return nil, fmt.Errorf("failed to parse eleven labs stability")
 	}
 	similarityBoost := os.Getenv("ELEVEN_LABS_SIMILARITY_BOOST")
 	if similarityBoost == "" {
@@ -41,7 +41,7 @@ func GetElevenLabsConfig() (*ElevenLabsConfig, error) {
 	}
 	similarityBoostVal, err := strconv.ParseFloat(similarityBoost, 32)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse eleven labs similarity boost")
+		return nil, fmt.Errorf("failed to parse eleven labs similarity boost")
 	}
 
 	return &ElevenLabsConfig{

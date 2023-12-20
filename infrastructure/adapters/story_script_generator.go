@@ -126,7 +126,7 @@ func (s *storyScriptGenerator) extractPayload(event eventsource.Event) (string, 
 		s.logger.Error(err, "Failed to unmarshal event data")
 		return "", err
 	}
-	fmt.Println(fmt.Sprintf("Event content: %s", chunkBody.Choices[0].Delta.Content))
+	//fmt.Println(fmt.Sprintf("Event content: %s", chunkBody.Choices[0].Delta.Content))
 
 	return chunkBody.Choices[0].Delta.Content, nil
 }

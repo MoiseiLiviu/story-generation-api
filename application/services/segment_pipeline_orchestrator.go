@@ -31,19 +31,16 @@ func NewSegmentPipelineOrchestrator(logger outbound.LoggerPort, workerPool outbo
 }
 
 func (s *segmentPipelineOrchestrator) StartPipeline(ctx context.Context, request inbound.StartPipelineParams) (<-chan domain.SegmentEvent, <-chan error) {
-	newCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	segmentCh, segmentGeneratorErrCh := s.segmentGenerator.Generate(newCtx, inbound.GenerateSegmentsParams{
+	segmentCh, segmentGeneratorErrCh := s.segmentGenerator.Generate(ctx, inbound.GenerateSegmentsParams{
 		Input:   request.Input,
 		StoryID: request.StoryID,
 	})
 
-	segmentWithMediaCh, mediaEnhancerErrCh := s.mediaEnhancer.Enhance(newCtx, segmentCh, request.VoiceID)
+	segmentWithMediaCh, mediaEnhancerErrCh := s.mediaEnhancer.Enhance(ctx, segmentCh, request.VoiceID)
 
-	segmentWithMediaUrlCh, mediaSaverErrCh := s.mediaSaver.Save(newCtx, segmentWithMediaCh, request.StoryID)
+	segmentWithMediaUrlCh, mediaSaverErrCh := s.mediaSaver.Save(ctx, segmentWithMediaCh, request.StoryID)
 
-	segmentEventsCh, metadataSaverErrCh := s.metadataSaver.Save(newCtx, segmentWithMediaUrlCh)
+	segmentEventsCh, metadataSaverErrCh := s.metadataSaver.Save(ctx, segmentWithMediaUrlCh)
 
 	mergerErrCh, err := channel_utils.MergeChannels(s.workerPool, segmentGeneratorErrCh, mediaEnhancerErrCh, mediaSaverErrCh, metadataSaverErrCh)
 
