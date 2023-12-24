@@ -7,6 +7,7 @@ import (
 
 type S3Config struct {
 	BucketName string
+	Region     string
 }
 
 func GetS3Config() (*S3Config, error) {
@@ -15,7 +16,13 @@ func GetS3Config() (*S3Config, error) {
 		return nil, fmt.Errorf("S3_BUCKET_NAME must be set")
 	}
 
+	region := os.Getenv("REGION")
+	if region == "" {
+		return nil, fmt.Errorf("REGION must be set")
+	}
+
 	return &S3Config{
 		BucketName: bucketName,
+		Region:     region,
 	}, nil
 }

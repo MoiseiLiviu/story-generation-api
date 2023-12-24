@@ -41,7 +41,7 @@ func (s *s3SegmentMediaStore) Save(ctx context.Context, segment domain.SegmentWi
 		return "", err
 	}
 
-	s3Url := fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.s3Config.BucketName, segment.ID)
+	s3Url := fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", s.s3Config.BucketName, s.s3Config.Region, itemPath)
 
 	return s3Url, nil
 }
