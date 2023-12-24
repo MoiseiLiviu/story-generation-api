@@ -47,5 +47,5 @@ func (s *s3SegmentMediaStore) Save(ctx context.Context, segment domain.SegmentWi
 }
 
 func (s *s3SegmentMediaStore) getS3ItemPath(segment domain.SegmentWithMedia, userID string) string {
-	return fmt.Sprintf("user/%s/story/%s/%s/%s", userID, segment.StoryID, segment.Type, segment.ID)
+	return fmt.Sprintf("user/%s/story/%s/segments/%s/%s", userID, segment.StoryID, segment.Type, segment.ID)
 }
