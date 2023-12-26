@@ -16,7 +16,7 @@ func GetS3Config() (*S3Config, error) {
 		return nil, fmt.Errorf("S3_BUCKET_NAME must be set")
 	}
 
-	region := os.Getenv("REGION")
+	region := os.Getenv("S3_REGION")
 	if region == "" {
 		return nil, fmt.Errorf("REGION must be set")
 	}

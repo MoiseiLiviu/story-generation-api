@@ -6,8 +6,9 @@ import (
 )
 
 type GenerateSegmentsParams struct {
-	Input   string
-	StoryID string
+	Input         string
+	StoryID       string
+	WordsPerStory int
 }
 
 type SegmentsGeneratorPort interface {

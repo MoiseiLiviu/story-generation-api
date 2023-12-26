@@ -7,9 +7,32 @@ const (
 	ImageSegmentType SegmentType = "image"
 )
 
-type SegmentWithMedia struct {
-	MediaContent []byte
+type VideoSegment struct {
+	FileName string
+	Ordinal  int
+	Text     string
+	Duration float64
+	ID       string
+}
+
+type VideoSegmentsAscByOrdinal []VideoSegment
+
+func (a VideoSegmentsAscByOrdinal) Len() int           { return len(a) }
+func (a VideoSegmentsAscByOrdinal) Less(i, j int) bool { return a[i].Ordinal < a[j].Ordinal }
+func (a VideoSegmentsAscByOrdinal) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+type AudioWithImageBackground struct {
+	SegmentWithMediaFile
+	BackgroundImageFileName string
+}
+
+type SegmentWithMediaFile struct {
+	FileName string
 	Segment
+}
+
+func (s SegmentWithMediaFile) Equals(other SegmentWithMediaFile) bool {
+	return s.ID == other.ID
 }
 
 func NewSegment(text string, segmentType SegmentType, id string, storyID string, ordinal int) Segment {
@@ -22,48 +45,13 @@ func NewSegment(text string, segmentType SegmentType, id string, storyID string,
 	}
 }
 
+const DefaultImageID = "default"
+
 type Segment struct {
-	Text    string
-	Type    SegmentType
-	ID      string
-	StoryID string
-	Ordinal int
-}
-
-type SegmentEvent struct {
-	StoryID   string      `json:"story_id"`
-	SegmentId string      `json:"segment_id"`
-	Text      string      `json:"text"`
-	Type      SegmentType `json:"type"`
-	Ordinal   int         `json:"ordinal"`
-	Url       string      `json:"url"`
-}
-
-type EndGenerationEvent struct {
-	MessageEvent
-}
-
-type ErrorEvent struct {
-	MessageEvent
-}
-
-type MessageEvent struct {
-	StoryID string `json:"story_id"`
-	Message string `json:"message"`
-}
-
-type SegmentWithMediaUrl struct {
-	MediaURL string
-	Segment
-}
-
-func (s SegmentWithMediaUrl) ToEvent() SegmentEvent {
-	return SegmentEvent{
-		StoryID:   s.StoryID,
-		SegmentId: s.ID,
-		Text:      s.Text,
-		Type:      s.Type,
-		Ordinal:   s.Ordinal,
-		Url:       s.MediaURL,
-	}
+	Text              string
+	Type              SegmentType
+	ID                string
+	StoryID           string
+	Ordinal           int
+	BackgroundImageID string
 }

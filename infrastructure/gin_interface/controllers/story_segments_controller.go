@@ -5,10 +5,8 @@ import (
 	"generate-script-lambda/application/ports/inbound"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/infrastructure/gin_interface/dto"
-	"generate-script-lambda/middleware"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"sync"
 )
 
 type StorySegmentsController interface {
@@ -18,18 +16,16 @@ type StorySegmentsController interface {
 
 type storySegmentsController struct {
 	logger               outbound.LoggerPort
-	workerPool           outbound.TaskDispatcher
-	pipelineOrchestrator inbound.SegmentPipelineOrchestrator
-	storySaver           outbound.StorySaverPort
+	videoCreatorPipeline inbound.VideoCreatorPipelinePort
 }
 
-func NewStorySegmentsController(logger outbound.LoggerPort, workerPool outbound.TaskDispatcher,
-	pipelineOrchestrator inbound.SegmentPipelineOrchestrator, storySaver outbound.StorySaverPort) StorySegmentsController {
+func NewStorySegmentsController(
+	logger outbound.LoggerPort,
+	pipelineOrchestrator inbound.VideoCreatorPipelinePort,
+) StorySegmentsController {
 	return &storySegmentsController{
 		logger:               logger,
-		workerPool:           workerPool,
-		pipelineOrchestrator: pipelineOrchestrator,
-		storySaver:           storySaver,
+		videoCreatorPipeline: pipelineOrchestrator,
 	}
 }
 
@@ -45,63 +41,27 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 		return
 	}
 
-	userID := c.GetString(middleware.ContextUserIDKey)
-
 	storyID := uuid.NewString()
 
-	segmentEvents, errCh := s.pipelineOrchestrator.StartPipeline(newCtx, inbound.StartPipelineParams{
+	res, err := s.videoCreatorPipeline.StartPipeline(newCtx, inbound.StartPipelineParams{
 		Input:   createStoryRequest.Input,
 		StoryID: storyID,
+		UserID:  createStoryRequest.UserID,
 		VoiceID: createStoryRequest.VoiceID,
-		UserID:  userID,
-	})
-
-	err := s.workerPool.Submit(func() {
-		var sendErrOnce sync.Once
-		for err := range errCh {
-			cancel()
-			s.logger.Error(err, "error in pipeline")
-			sendErrOnce.Do(func() {
-				c.SSEvent("error", "internal server error")
-				c.Abort()
-			})
-		}
 	})
 	if err != nil {
-		s.logger.Error(err, "failed to submit worker")
-		c.SSEvent("error", "internal server error")
+		err = c.AbortWithError(500, err)
+		if err != nil {
+			s.logger.Error(err, "failed to abort with error")
+		}
 		return
 	}
 
-	for event := range segmentEvents {
-		select {
-		case <-newCtx.Done():
-			return
-		default:
-			c.SSEvent("segment", event)
-		}
-	}
-
-	s.logger.InfoWithFields("segments generation complete", map[string]interface{}{
-		"story_id": storyID,
+	c.JSON(200, dto.CreateStoryResponse{
+		StoryID:     storyID,
+		VideoKey:    res.VideoKey,
+		VideoRegion: res.VideoRegion,
 	})
-
-	err = s.storySaver.Save(newCtx, outbound.SaveStoryParams{
-		ID:     storyID,
-		UserID: userID,
-		Input:  createStoryRequest.Input,
-	})
-	if err != nil {
-		s.logger.Error(err, "failed to save story")
-		c.SSEvent("error", "internal server error")
-		return
-	} else {
-		s.logger.InfoWithFields("story saved", map[string]interface{}{
-			"story_id": storyID,
-		})
-	}
-
-	c.SSEvent("generation_complete", nil)
 }
 
 func (s *storySegmentsController) RegisterRoutes(g *gin.Engine) {

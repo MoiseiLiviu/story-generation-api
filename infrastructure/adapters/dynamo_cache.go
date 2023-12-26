@@ -12,13 +12,12 @@ import (
 )
 
 type dynamoSegmentItem struct {
-	StoryId        string             `dynamodbav:"story_id"`
-	SegmentId      string             `dynamodbav:"segment_id"`
-	Text           string             `dynamodbav:"text"`
-	S3Url          string             `dynamodbav:"s3_url"`
-	Type           domain.SegmentType `dynamodbav:"type"`
-	SegmentOrdinal int                `dynamodbav:"segment_ordinal"`
-	TTL            int64              `dynamodbav:"ttl"`
+	StoryId        string  `dynamodbav:"story_id"`
+	SegmentId      string  `dynamodbav:"segment_id"`
+	Text           string  `dynamodbav:"text"`
+	SegmentOrdinal int     `dynamodbav:"segment_ordinal"`
+	TTL            int64   `dynamodbav:"ttl"`
+	Duration       float64 `dynamodbav:"duration"`
 }
 
 type dynamoCache struct {
@@ -35,13 +34,12 @@ func NewDynamoCache(logger outbound.LoggerPort, dynamoSvc *dynamodb.DynamoDB, dy
 	}
 }
 
-func (c *dynamoCache) Save(ctx context.Context, segment domain.SegmentWithMediaUrl) error {
+func (c *dynamoCache) Save(ctx context.Context, segment domain.VideoSegment, storyID string) error {
 	item := dynamoSegmentItem{
-		StoryId:        segment.StoryID,
+		StoryId:        storyID,
 		SegmentId:      segment.ID,
 		Text:           segment.Text,
-		S3Url:          segment.MediaURL,
-		Type:           segment.Type,
+		Duration:       segment.Duration,
 		SegmentOrdinal: segment.Ordinal,
 		TTL:            time.Now().Add(time.Duration(c.dynamoConfig.TtlMinutes) * time.Minute).Unix(),
 	}

@@ -3,11 +3,11 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
+	"io"
 	"net/http"
 )
 
@@ -20,7 +20,7 @@ type DalleApiRequest struct {
 
 type DalleApiResponse struct {
 	Data []struct {
-		B64Json string `json:"b64_json"`
+		Url string `json:"url"`
 	} `json:"data"`
 }
 
@@ -38,8 +38,8 @@ func NewImageGenerator(contentFetcher ContentFetcher, dalleConfig *config.DaLLeC
 	}
 }
 
-func (i *imageGenerator) Generate(ctx context.Context, description string) ([]byte, error) {
-	req, err := i.getRequest(ctx, description)
+func (i *imageGenerator) Generate(ctx context.Context, description string) (io.ReadCloser, error) {
+	req, err := i.generateImageRequest(ctx, description)
 	if err != nil {
 		i.logger.Error(err, "Failed to create the HTTP request")
 		return nil, err
@@ -47,28 +47,39 @@ func (i *imageGenerator) Generate(ctx context.Context, description string) ([]by
 
 	var dalleRes DalleApiResponse
 
-	rawRes, err := i.FetchContent(req)
+	res, err := i.FetchContent(req)
 	if err != nil {
 		i.logger.Error(err, "Failed to fetch the content")
 		return nil, err
 	}
 
-	err = json.Unmarshal(rawRes, &dalleRes)
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			i.logger.Error(err, "Failed to close the response body")
+		}
+	}(res.Body)
+
+	resBody, err := io.ReadAll(res.Body)
+	if err != nil {
+		i.logger.Error(err, "Failed to read the response body")
+		return nil, err
+	}
+
+	err = json.Unmarshal(resBody, &dalleRes)
 	if err != nil {
 		i.logger.Error(err, "Failed to unmarshal the response")
 		return nil, err
 	}
 
-	decodedImage, err := base64.StdEncoding.DecodeString(dalleRes.Data[0].B64Json)
-	if err != nil {
-		i.logger.Error(err, "Failed to decode the image")
-		return nil, err
-	}
+	readImageReq, err := http.NewRequest(http.MethodGet, dalleRes.Data[0].Url, nil)
 
-	return decodedImage, nil
+	imageRes, err := i.FetchContent(readImageReq)
+
+	return imageRes.Body, nil
 }
 
-func (i *imageGenerator) getRequest(ctx context.Context, text string) (*http.Request, error) {
+func (i *imageGenerator) generateImageRequest(ctx context.Context, text string) (*http.Request, error) {
 	reqBody := DalleApiRequest{
 		Prompt:         fmt.Sprintf("%s, in a cartoon style", text),
 		Size:           "256x256",

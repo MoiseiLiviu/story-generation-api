@@ -1,7 +1,10 @@
 package outbound
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 type ImageGeneratorPort interface {
-	Generate(ctx context.Context, description string) ([]byte, error)
+	Generate(ctx context.Context, description string) (io.ReadCloser, error)
 }

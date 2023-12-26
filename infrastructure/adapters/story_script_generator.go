@@ -38,22 +38,20 @@ type chatGptResponseChoice struct {
 }
 
 type storyScriptGenerator struct {
-	logger        outbound.LoggerPort
-	wordsPerStory int
-	gptConfig     *config.GptConfig
-	workerPool    outbound.TaskDispatcher
+	logger     outbound.LoggerPort
+	gptConfig  *config.GptConfig
+	workerPool outbound.TaskDispatcher
 }
 
-func NewStoryScriptGenerator(wordsPerStory int, gptConfig *config.GptConfig, workerPool outbound.TaskDispatcher, logger outbound.LoggerPort) outbound.StoryScriptGeneratorPort {
+func NewStoryScriptGenerator(gptConfig *config.GptConfig, workerPool outbound.TaskDispatcher, logger outbound.LoggerPort) outbound.StoryScriptGeneratorPort {
 	return &storyScriptGenerator{
-		logger:        logger,
-		wordsPerStory: wordsPerStory,
-		gptConfig:     gptConfig,
-		workerPool:    workerPool,
+		logger:     logger,
+		gptConfig:  gptConfig,
+		workerPool: workerPool,
 	}
 }
 
-func (s *storyScriptGenerator) Generate(ctx context.Context, input string) (<-chan string, <-chan error) {
+func (s *storyScriptGenerator) Generate(ctx context.Context, req outbound.GenerateStoryScriptRequest) (<-chan string, <-chan error) {
 	out := make(chan string)
 	errCh := make(chan error)
 
@@ -65,7 +63,7 @@ func (s *storyScriptGenerator) Generate(ctx context.Context, input string) (<-ch
 		defer close(out)
 		defer close(errCh)
 		defer cancel()
-		req, err := s.createRequest(ctx, input)
+		req, err := s.createRequest(ctx, req.Input, req.WordsPerStory)
 		if err != nil {
 			s.logger.Error(err, "Failed to create HTTP request for script stream")
 			errCh <- err
@@ -131,7 +129,7 @@ func (s *storyScriptGenerator) extractPayload(event eventsource.Event) (string, 
 	return chunkBody.Choices[0].Delta.Content, nil
 }
 
-func (s *storyScriptGenerator) createRequest(ctx context.Context, input string) (*http.Request, error) {
+func (s *storyScriptGenerator) createRequest(ctx context.Context, input string, wordsPerStory int) (*http.Request, error) {
 	promptMessage := chatGptMessage{
 		Role: "system",
 		Content: fmt.Sprintf("Write a story on the topic: %s."+
@@ -143,7 +141,7 @@ func (s *storyScriptGenerator) createRequest(ctx context.Context, input string) 
 			"- Should be used only 4 times per story\n"+
 			"- Should be used in a meaningful way (only when the scenery changes drastically)\n"+
 			"- Should not be part of the storytelling (similar to a theater play, just to set the scenery)\n"+
-			"The story should be of about %d words.", input, s.wordsPerStory),
+			"The story should be of about %d words.", input, wordsPerStory),
 	}
 
 	promptReq := chatGptRequest{

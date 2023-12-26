@@ -6,5 +6,5 @@ import (
 )
 
 type SegmentCachePort interface {
-	Save(ctx context.Context, segment domain.SegmentWithMediaUrl) error
+	Save(ctx context.Context, segment domain.VideoSegment, storyID string) error
 }

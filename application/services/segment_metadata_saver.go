@@ -22,9 +22,9 @@ func NewSegmentMetadataSaver(logger outbound.LoggerPort, workerPool outbound.Tas
 	}
 }
 
-func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.SegmentWithMediaUrl) (<-chan domain.SegmentEvent, <-chan error) {
-	out := make(chan domain.SegmentEvent)
-	errCh := make(chan error)
+func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.VideoSegment, storyID string) (<-chan domain.VideoSegment, <-chan error) {
+	out := make(chan domain.VideoSegment)
+	errCh := make(chan error, 5)
 
 	newCtx, cancel := context.WithCancel(ctx)
 
@@ -32,24 +32,22 @@ func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.
 		defer close(out)
 		defer close(errCh)
 		defer cancel()
-		for {
+		for segment := range segments {
 			select {
 			case <-newCtx.Done():
 				return
-			case segmentWithMedia, ok := <-segments:
-				if !ok {
+			default:
+				err := s.segmentCache.Save(newCtx, segment, storyID)
+				if err != nil {
+					select {
+					case errCh <- err:
+					case <-newCtx.Done():
+					}
 					return
 				}
-				err := s.segmentCache.Save(newCtx, segmentWithMedia)
-				if err != nil {
-					errCh <- err
-					return
-				} else {
-					s.logger.DebugWithFields("segment saved", map[string]interface{}{
-						"type": segmentWithMedia.Type,
-						"id":   segmentWithMedia.ID,
-					})
-					out <- segmentWithMedia.ToEvent()
+				select {
+				case out <- segment:
+				case <-newCtx.Done():
 				}
 			}
 		}
@@ -57,7 +55,6 @@ func (s *segmentMetadataSaver) Save(ctx context.Context, segments <-chan domain.
 
 	if err != nil {
 		errCh <- err
-		cancel()
 	}
 
 	return out, errCh

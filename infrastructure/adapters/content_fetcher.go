@@ -9,7 +9,7 @@ import (
 )
 
 type ContentFetcher interface {
-	FetchContent(req *http.Request) ([]byte, error)
+	FetchContent(req *http.Request) (*http.Response, error)
 }
 
 type contentFetcher struct {
@@ -22,7 +22,7 @@ func NewContentFetcher(logger outbound.LoggerPort) ContentFetcher {
 	}
 }
 
-func (c *contentFetcher) FetchContent(req *http.Request) ([]byte, error) {
+func (c *contentFetcher) FetchContent(req *http.Request) (*http.Response, error) {
 	const maxRetries int = 3
 	const retryDelay = 5 * time.Second
 
@@ -67,16 +67,7 @@ func (c *contentFetcher) FetchContent(req *http.Request) ([]byte, error) {
 			return nil, fmt.Errorf("HTTP request returned non-OK status code: %d", res.StatusCode)
 		}
 
-		payload, err := c.readResponseBodyPayload(res)
-		if err != nil {
-			c.logger.ErrorWithFields(err, "Failed to read the response body", map[string]interface{}{
-				"method": req.Method,
-				"URL":    req.URL.String(),
-			})
-			return nil, err
-		}
-
-		return payload, nil
+		return res, nil
 	}
 
 	return nil, fmt.Errorf("failed to fetch content after retries")

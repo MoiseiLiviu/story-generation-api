@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
+	"io"
 	"net/http"
 )
 
@@ -34,19 +35,25 @@ func NewAudioGenerator(contentFetcher ContentFetcher, elevenLabsConfig *config.E
 	}
 }
 
-func (a *audioGenerator) Generate(ctx context.Context, generateAudioParams outbound.GenerateAudioParams) ([]byte, error) {
-	req, err := a.getRequest(ctx, generateAudioParams.Text, generateAudioParams.VoiceID)
+func (a *audioGenerator) Generate(ctx context.Context, audioReq outbound.GenerateAudioRequest) (io.ReadCloser, error) {
+	req, err := a.getRequest(ctx, audioReq.Text, audioReq.VoiceID)
 	if err != nil {
 		a.logger.ErrorWithFields(err,
 			"Failed to create the HTTP request",
 			map[string]interface{}{
 				"action": "Creating HTTP Request",
-				"URL":    a.elevenLabsConfig.ApiUrl + "/" + generateAudioParams.VoiceID,
+				"URL":    a.elevenLabsConfig.ApiUrl + "/" + audioReq.VoiceID,
 			})
 		return nil, err
 
 	}
-	return a.FetchContent(req)
+	res, err := a.FetchContent(req)
+	if err != nil {
+		a.logger.Error(err, "Failed to fetch the content")
+		return nil, err
+	}
+
+	return res.Body, nil
 }
 
 func (a *audioGenerator) getRequest(ctx context.Context, text string, voiceID string) (*http.Request, error) {

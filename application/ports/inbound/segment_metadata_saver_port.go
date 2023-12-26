@@ -6,5 +6,5 @@ import (
 )
 
 type SegmentMetadataSaverPort interface {
-	Save(ctx context.Context, segments <-chan domain.SegmentWithMediaUrl) (<-chan domain.SegmentEvent, <-chan error)
+	Save(ctx context.Context, segments <-chan domain.VideoSegment, storyID string) (<-chan domain.VideoSegment, <-chan error)
 }

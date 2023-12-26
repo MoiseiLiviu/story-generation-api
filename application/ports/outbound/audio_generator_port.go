@@ -1,12 +1,15 @@
 package outbound
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
-type GenerateAudioParams struct {
+type GenerateAudioRequest struct {
 	Text    string
 	VoiceID string
 }
 
 type AudioGeneratorPort interface {
-	Generate(ctx context.Context, generateAudioParams GenerateAudioParams) ([]byte, error)
+	Generate(ctx context.Context, req GenerateAudioRequest) (io.ReadCloser, error)
 }
