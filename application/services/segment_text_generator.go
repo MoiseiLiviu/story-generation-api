@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"generate-script-lambda/application/ports/inbound"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/domain"
@@ -12,17 +11,12 @@ import (
 	"strings"
 )
 
-const (
-	MaxSentencesBeforePublishing = 3
-)
-
 type segmentTextGenerator struct {
 	logger            outbound.LoggerPort
 	scriptGenerator   outbound.StoryScriptGeneratorPort
 	workerPool        outbound.TaskDispatcher
 	descRegexp        *regexp.Regexp
 	punctuationRegexp *regexp.Regexp
-	imageRegexp       *regexp.Regexp
 }
 
 func NewSegmentTextGenerator(logger outbound.LoggerPort, scriptGenerator outbound.StoryScriptGeneratorPort,
@@ -33,7 +27,6 @@ func NewSegmentTextGenerator(logger outbound.LoggerPort, scriptGenerator outboun
 		workerPool:        workerPool,
 		descRegexp:        regexp.MustCompile(`\[(.*?)]`),
 		punctuationRegexp: regexp.MustCompile(`[.!?:;]`),
-		imageRegexp:       regexp.MustCompile(`\{[^}]*\}`),
 	}
 }
 
@@ -58,7 +51,7 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 		var builder strings.Builder
 		audioSegmentsCounter := 0
 		imageSegmentsCounter := 0
-		previousImageID := ""
+		previousImageID := domain.DefaultImageID
 
 		for {
 			select {
@@ -72,14 +65,7 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 			case token, ok := <-tokenCh:
 				if ok {
 					builder.WriteString(token)
-					newBuffer, segments, err := s.extractSegments(builder.String())
-					if err != nil {
-						select {
-						case errCh <- err:
-						case <-newCtx.Done():
-						}
-						return
-					}
+					segments, newBuffer := s.extractSegments(builder.String())
 					builder.Reset()
 					builder.WriteString(newBuffer)
 					for _, segment := range segments {
@@ -87,23 +73,40 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 							segment.Ordinal = audioSegmentsCounter
 							audioSegmentsCounter++
 							segment.StoryID = params.StoryID
-							if segment.BackgroundImageID == "" && previousImageID == "" {
-								segment.BackgroundImageID = domain.DefaultImageID
-							} else if segment.BackgroundImageID == "" {
-								segment.BackgroundImageID = previousImageID
-							}
+							segment.BackgroundImageID = previousImageID
 						} else if segment.Type == domain.ImageSegmentType {
 							segment.Ordinal = imageSegmentsCounter
 							imageSegmentsCounter++
 							segment.StoryID = params.StoryID
 							previousImageID = segment.ID
 						}
+						s.logger.DebugWithFields("Generated segment", map[string]interface{}{
+							"id":   segment.ID,
+							"type": segment.Type,
+							"ord":  segment.Ordinal,
+							"bg":   segment.BackgroundImageID,
+							"txt":  segment.Text,
+						})
+
 						out <- segment
 					}
 				} else {
 					if builder.Len() > 0 {
-						out <- domain.NewSegment(builder.String(), domain.AudioSegmentType, uuid.NewString(), params.StoryID, audioSegmentsCounter)
-						log.Info().Msg("Finished reading from stream.")
+						segment := domain.Segment{
+							Text:              s.prepareForMediaGeneration(builder.String()),
+							Type:              domain.AudioSegmentType,
+							ID:                uuid.NewString(),
+							BackgroundImageID: previousImageID,
+							Ordinal:           audioSegmentsCounter,
+						}
+						s.logger.DebugWithFields("Generated segment", map[string]interface{}{
+							"id":   segment.ID,
+							"type": segment.Type,
+							"ord":  segment.Ordinal,
+							"bg":   segment.BackgroundImageID,
+							"txt":  segment.Text,
+						})
+						out <- segment
 					}
 					return
 				}
@@ -117,128 +120,35 @@ func (s *segmentTextGenerator) Generate(ctx context.Context, params inbound.Gene
 	return out, errCh
 }
 
-func (s *segmentTextGenerator) extractSegments(buffer string) (resultBuffer string, segments []domain.Segment, err error) {
-	segments = make([]domain.Segment, 0)
-	if s.canExtractImageSegment(buffer) {
-		segment, newBuffer, extractErr := s.extractImageSegment(buffer)
-		if extractErr != nil {
-			err = extractErr
-			return
+func (s *segmentTextGenerator) extractSegments(buffer string) ([]domain.Segment, string) {
+	segments := make([]domain.Segment, 0)
+	imageIndex := s.descRegexp.FindStringIndex(buffer)
+	if imageIndex != nil {
+		audioText := buffer[:imageIndex[0]]
+		if audioText != "" {
+			audioSegment := domain.Segment{
+				Text: s.prepareForMediaGeneration(audioText),
+				Type: domain.AudioSegmentType,
+				ID:   uuid.NewString(),
+			}
+			segments = append(segments, audioSegment)
 		}
-		resultBuffer, segments, err = s.extractSegments(newBuffer)
-		segments = append([]domain.Segment{segment}, segments...)
-		return
-	}
-	if s.isParserInsideBrackets(buffer) {
-		resultBuffer = buffer
-		return
-	}
-	if untilIndex := s.canExtractAudioSegment(buffer); untilIndex != -1 {
-		segment, newBuffer, extractErr := s.extractAudioSegment(buffer, untilIndex)
-		if extractErr != nil {
-			err = extractErr
-			return
+		imageDescription := buffer[imageIndex[0]+1 : imageIndex[1]-1]
+		imageSegment := domain.Segment{
+			Text: s.prepareForMediaGeneration(imageDescription),
+			Type: domain.ImageSegmentType,
+			ID:   uuid.NewString(),
 		}
-		resultBuffer, segments, err = s.extractSegments(newBuffer)
-		segments = append([]domain.Segment{segment}, segments...)
-		return
-	}
-	resultBuffer = buffer
-
-	return
-}
-
-func (s *segmentTextGenerator) canExtractImageSegment(buffer string) bool {
-	return s.descRegexp.MatchString(buffer)
-}
-
-func (s *segmentTextGenerator) isParserInsideBrackets(buffer string) bool {
-	return strings.Contains(buffer, "[")
-}
-
-func (s *segmentTextGenerator) canExtractAudioSegment(buffer string) int {
-	matches := s.punctuationRegexp.FindAllStringIndex(buffer, -1)
-
-	if len(matches) >= MaxSentencesBeforePublishing {
-		return matches[MaxSentencesBeforePublishing-1][0]
-	}
-
-	return -1
-}
-
-func (s *segmentTextGenerator) extractAudioSegment(buffer string, untilIndex int) (audioSegment domain.Segment, newBuffer string, err error) {
-	accText := buffer[:untilIndex+1]
-	var extractedText string
-
-	imageMatches := s.imageRegexp.FindAllStringIndex(accText, -1)
-	nrOfImages := len(imageMatches)
-
-	if nrOfImages > 1 {
-		extractedText = accText[:imageMatches[1][0]]
-		newBuffer = accText[imageMatches[1][0]:]
+		segments = append(segments, imageSegment)
+		furtherSegments, newBuffer := s.extractSegments(buffer[imageIndex[1]:])
+		segments = append(segments, furtherSegments...)
+		return segments, newBuffer
 	} else {
-		extractedText = accText
-		newBuffer = buffer[untilIndex+1:]
+		return segments, buffer
 	}
-
-	imageID := s.imageRegexp.FindString(extractedText)
-	if imageID != "" {
-		imageID = imageID[1 : len(imageID)-1]
-	}
-
-	audioSegment = domain.Segment{
-		Text:              s.prepareTextForTTS(extractedText),
-		Type:              domain.AudioSegmentType,
-		BackgroundImageID: imageID,
-		ID:                uuid.NewString(),
-	}
-
-	log.Debug().
-		Str("segmentID", audioSegment.ID).
-		Str("text", audioSegment.Text).
-		Str("BackgroundImageID", audioSegment.BackgroundImageID).
-		Msg("Extracted text segment for audio handling")
-
-	return
 }
 
-func (s *segmentTextGenerator) extractImageSegment(buffer string) (imageSegment domain.Segment, newBuffer string, err error) {
-	match := s.descRegexp.FindStringSubmatch(buffer)
-	if match == nil {
-		err = fmt.Errorf("description enclosing character found, but no expression matching description clause could be extracted")
-	}
-
-	imageSegment = domain.Segment{
-		Text: match[1],
-		Type: domain.ImageSegmentType,
-		ID:   uuid.NewString(),
-	}
-
-	replaced := false
-	newBuffer = s.descRegexp.ReplaceAllStringFunc(buffer, func(match string) string {
-		if !replaced {
-			replaced = true
-			return "{" + imageSegment.ID + "}"
-		}
-		return match
-	})
-
-	log.Debug().
-		Str("segmentID", imageSegment.ID).
-		Str("description", imageSegment.Text).
-		Msg("Extracted description for image handling")
-
-	return
-}
-
-func (s *segmentTextGenerator) prepareTextForTTS(input string) string {
-	result := s.imageRegexp.ReplaceAllString(input, "")
-	result = s.removeEmptySpaces(result)
-
-	return result
-}
-
-func (s *segmentTextGenerator) removeEmptySpaces(input string) string {
+func (s *segmentTextGenerator) prepareForMediaGeneration(input string) string {
 	result := strings.Replace(input, "\n", "", -1)
 	result = strings.Replace(result, "\r", "", -1)
 	result = strings.Replace(result, "\t", "", -1)

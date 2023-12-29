@@ -2,18 +2,21 @@ package inbound
 
 import (
 	"context"
+	"generate-script-lambda/domain"
 )
 
 type StartPipelineParams struct {
-	StoryID string
-	Input   string
-	VoiceID string
-	UserID  string
+	StoryID       string
+	Input         string
+	VoiceID       string
+	UserID        string
+	WordsPerStory int
 }
 
 type VideoCreatorResponse struct {
-	VideoKey    string
-	VideoRegion string
+	VideoKey      string
+	VideoRegion   string
+	VideoSegments []domain.VideoSegment
 }
 
 type VideoCreatorPipelinePort interface {

@@ -5,41 +5,34 @@ import (
 	"generate-script-lambda/application/ports/inbound"
 	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/channel_utils"
-	"generate-script-lambda/domain"
 )
 
 type videoCreatorPipeline struct {
 	segmentGenerator   inbound.SegmentsGeneratorPort
-	metadataSaver      inbound.SegmentMetadataSaverPort
 	mediaFileGenerator inbound.SegmentMediaFileGenerator
-	videoGenerator     inbound.SegmentVideoGenerator
 	mediaBinder        inbound.SegmentMediaBinderPort
-	concatenateVideos  outbound.ConcatenateVideosPort
 	logger             outbound.LoggerPort
 	workerPool         outbound.TaskDispatcher
+	videoCreator       outbound.VideoCreatorPort
 	videoPublisher     outbound.VideoPublisherPort
 }
 
 func NewVideoCreatorPipeline(
 	segmentGenerator inbound.SegmentsGeneratorPort,
-	metadataSaver inbound.SegmentMetadataSaverPort,
 	mediaFileGenerator inbound.SegmentMediaFileGenerator,
-	videoGenerator inbound.SegmentVideoGenerator,
 	mediaBinder inbound.SegmentMediaBinderPort,
-	concatenateVideos outbound.ConcatenateVideosPort,
 	logger outbound.LoggerPort,
 	workerPool outbound.TaskDispatcher,
-	videoPublisher outbound.VideoPublisherPort) inbound.VideoCreatorPipelinePort {
+	videoPublisher outbound.VideoPublisherPort,
+	videoCreator outbound.VideoCreatorPort) inbound.VideoCreatorPipelinePort {
 	return &videoCreatorPipeline{
 		segmentGenerator:   segmentGenerator,
-		metadataSaver:      metadataSaver,
 		mediaFileGenerator: mediaFileGenerator,
-		videoGenerator:     videoGenerator,
 		mediaBinder:        mediaBinder,
-		concatenateVideos:  concatenateVideos,
 		logger:             logger,
 		workerPool:         workerPool,
 		videoPublisher:     videoPublisher,
+		videoCreator:       videoCreator,
 	}
 }
 
@@ -47,35 +40,54 @@ func (s *videoCreatorPipeline) StartPipeline(ctx context.Context, request inboun
 	newCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	segmentsCh, generatorErrCh := s.segmentGenerator.Generate(newCtx, inbound.GenerateSegmentsParams{
-		Input:   request.Input,
-		StoryID: request.StoryID,
+		Input:         request.Input,
+		StoryID:       request.StoryID,
+		WordsPerStory: request.WordsPerStory,
 	})
 	segmentsMediaFileCh, mediaFileErrCh := s.mediaFileGenerator.Generate(newCtx, segmentsCh, request.VoiceID)
-	coupledMediaCh, coupledMediaErrCh := s.mediaBinder.Bind(newCtx, segmentsMediaFileCh)
-	videoSegmentsCh, videoErrCh := s.videoGenerator.Generate(newCtx, coupledMediaCh)
-	cachedVideoSegments, metadataSaverErrCh := s.metadataSaver.Save(newCtx, videoSegmentsCh, request.StoryID)
-	mergedErrCh, err := channel_utils.MergeChannels(s.workerPool, generatorErrCh, mediaFileErrCh, coupledMediaErrCh, videoErrCh, metadataSaverErrCh)
+
+	mergedErrCh, err := channel_utils.MergeChannels(s.workerPool, generatorErrCh, mediaFileErrCh)
 	if err != nil {
 		s.logger.Error(err, "error merging error channels")
 		return nil, err
 	}
+	err = s.workerPool.Submit(func() {
+		for {
+			select {
+			case <-newCtx.Done():
+				return
+			case err, ok := <-mergedErrCh:
+				if !ok {
+					return
+				} else {
+					s.logger.Error(err, "error in pipeline")
+					cancel()
+					return
+				}
+			}
+		}
+	})
 
-	videoSegments, err := s.collectVideoSegments(newCtx, cachedVideoSegments, mergedErrCh)
 	if err != nil {
-		s.logger.Error(err, "error collecting video segments")
+		s.logger.Error(err, "error submitting error handler")
 		return nil, err
 	}
 
-	mergedVideoFileName, err := s.concatenateVideos.Concatenate(videoSegments)
+	coupledMediaCh, err := s.mediaBinder.Bind(newCtx, segmentsMediaFileCh)
 	if err != nil {
-		s.logger.Error(err, "error concatenating video segments")
+		s.logger.Error(err, "error binding media")
+		return nil, err
+	}
+	createResponse, err := s.videoCreator.Create(coupledMediaCh)
+	if err != nil {
+		s.logger.Error(err, "error creating video")
 		return nil, err
 	}
 
 	res, err := s.videoPublisher.Publish(newCtx, outbound.PublishVideoRequest{
 		UserID:        request.UserID,
 		StoryID:       request.StoryID,
-		VideoFileName: mergedVideoFileName,
+		VideoFileName: createResponse.VideoFileName,
 	})
 	if err != nil {
 		s.logger.Error(err, "error publishing video")
@@ -83,28 +95,8 @@ func (s *videoCreatorPipeline) StartPipeline(ctx context.Context, request inboun
 	}
 
 	return &inbound.VideoCreatorResponse{
-		VideoKey:    res.VideoKey,
-		VideoRegion: res.StoreRegion,
+		VideoKey:      res.VideoKey,
+		VideoRegion:   res.StoreRegion,
+		VideoSegments: createResponse.VideoSegments,
 	}, nil
-}
-
-func (s *videoCreatorPipeline) collectVideoSegments(ctx context.Context,
-	videoSegmentsCh <-chan domain.VideoSegment, errCh <-chan error) ([]domain.VideoSegment, error) {
-	videoSegments := make([]domain.VideoSegment, 0)
-	for {
-		select {
-		case err := <-errCh:
-			s.logger.Error(err, "error in pipeline")
-			return nil, err
-		case <-ctx.Done():
-			s.logger.Info("context cancelled")
-			return nil, nil
-		case videoSegment, ok := <-videoSegmentsCh:
-			if !ok {
-				return videoSegments, nil
-			} else {
-				videoSegments = append(videoSegments, videoSegment)
-			}
-		}
-	}
 }

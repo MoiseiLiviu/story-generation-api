@@ -38,14 +38,19 @@ func (c *contentFetcher) FetchContent(req *http.Request) (*http.Response, error)
 			return nil, err
 		}
 
-		if res.StatusCode == http.StatusTooManyRequests {
+		if res.StatusCode == http.StatusTooManyRequests ||
+			res.StatusCode == http.StatusServiceUnavailable ||
+			res.StatusCode == http.StatusGatewayTimeout ||
+			res.StatusCode == http.StatusBadGateway ||
+			res.StatusCode == http.StatusRequestTimeout {
 			if attempt == maxRetries {
-				return nil, fmt.Errorf("max retries reached for 429 Too Many Requests")
+				return nil, fmt.Errorf("request failed after %d retries", maxRetries)
 			}
-			c.logger.WarnWithFields("429 Too Many Requests, retrying...", map[string]interface{}{
+			c.logger.WarnWithFields("Request failed, retrying...", map[string]interface{}{
 				"method":  req.Method,
 				"URL":     req.URL.String(),
 				"attempt": attempt + 1,
+				"status":  res.StatusCode,
 			})
 
 			time.Sleep(retryDelay)

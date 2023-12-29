@@ -49,7 +49,9 @@ func (a *audioGenerator) Generate(ctx context.Context, audioReq outbound.Generat
 	}
 	res, err := a.FetchContent(req)
 	if err != nil {
-		a.logger.Error(err, "Failed to fetch the content")
+		a.logger.ErrorWithFields(err, "Failed to fetch the audio content", map[string]interface{}{
+			"text": audioReq.Text,
+		})
 		return nil, err
 	}
 

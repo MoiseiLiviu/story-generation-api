@@ -11,8 +11,6 @@ import (
 )
 
 func TestSegmentTextGenerator_Generate(t *testing.T) {
-	const wordsPerStory = 500
-
 	gptConfig, err := config.GetGptConfig()
 	if err != nil {
 		t.Fatal("Failed to get gpt config:", err)
@@ -25,15 +23,16 @@ func TestSegmentTextGenerator_Generate(t *testing.T) {
 
 	logger := adapters.NewZerologWrapper()
 
-	scriptGenerator := adapters.NewStoryScriptGenerator(wordsPerStory, gptConfig, workerPool, logger)
+	scriptGenerator := adapters.NewStoryScriptGenerator(gptConfig, workerPool, logger)
 
 	textGenerator := NewSegmentTextGenerator(logger, scriptGenerator, workerPool)
 
 	ctx := context.Background()
 
 	outCh, errCh := textGenerator.Generate(ctx, inbound.GenerateSegmentsParams{
-		Input:   "drunken mermaid",
-		StoryID: uuid.NewString(),
+		Input:         "drunken mermaid",
+		StoryID:       uuid.NewString(),
+		WordsPerStory: 400,
 	})
 
 	for {

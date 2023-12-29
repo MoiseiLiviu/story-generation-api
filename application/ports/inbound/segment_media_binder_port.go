@@ -6,5 +6,5 @@ import (
 )
 
 type SegmentMediaBinderPort interface {
-	Bind(ctx context.Context, segments <-chan domain.SegmentWithMediaFile) (<-chan domain.AudioWithImageBackground, <-chan error)
+	Bind(ctx context.Context, segments <-chan domain.SegmentWithMediaFile) ([]domain.AudioWithImageBackground, error)
 }

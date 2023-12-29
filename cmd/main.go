@@ -6,18 +6,12 @@ import (
 	"generate-script-lambda/config"
 	"generate-script-lambda/infrastructure/adapters"
 	"generate-script-lambda/infrastructure/gin_interface/controllers"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gin-gonic/gin"
 	"github.com/panjf2000/ants/v2"
 	"github.com/rs/zerolog/log"
 )
 
 func main() {
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
-		SharedConfigState: session.SharedConfigEnable,
-	}))
-
 	gptConfig, err := config.GetGptConfig()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to get gpt config")
@@ -38,11 +32,6 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to get s3 config")
 	}
 
-	dynamoConfig, err := config.GetDynamoConfig()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to get dynamo config")
-	}
-
 	zeroLogger := adapters.NewZerologWrapper()
 
 	panicHandler := func(p interface{}) {
@@ -60,10 +49,6 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to create aws session")
 	}
 
-	dynamoClient := dynamodb.New(sess)
-
-	dynamoCache := adapters.NewDynamoCache(zeroLogger, dynamoClient, dynamoConfig)
-
 	contentFetcher := adapters.NewContentFetcher(zeroLogger)
 
 	imageGenerator := adapters.NewImageGenerator(contentFetcher, dalleConfig, zeroLogger)
@@ -74,22 +59,16 @@ func main() {
 
 	storyScriptGenerator := adapters.NewStoryScriptGenerator(gptConfig, workerPool, zeroLogger)
 
-	segmentMetadataSaver := services.NewSegmentMetadataSaver(zeroLogger, workerPool, dynamoCache)
-
 	segmentTextGenerator := services.NewSegmentTextGenerator(zeroLogger, storyScriptGenerator, workerPool)
 
-	videoCreator := adapters.NewFFMPEGVideoCreator(zeroLogger)
+	videoCreator := adapters.NewVideoCreator(zeroLogger)
 
-	segmentVideoGenerator := services.NewSegmentVideoGenerator(workerPool, videoCreator)
-
-	concatenateVideos := adapters.NewFFmpegVideoConcatenate(zeroLogger)
-
-	segmentMediaBinder := services.NewSegmentMediaBinder(workerPool)
+	segmentMediaBinder := services.NewSegmentMediaBinder(zeroLogger, workerPool)
 
 	videoPublisher := adapters.NewS3VideoPublisher(zeroLogger, s3Config)
 
-	videoCreatorPipeline := services.NewVideoCreatorPipeline(segmentTextGenerator, segmentMetadataSaver, mediaFileGenerator, segmentVideoGenerator,
-		segmentMediaBinder, concatenateVideos, zeroLogger, workerPool, videoPublisher)
+	videoCreatorPipeline := services.NewVideoCreatorPipeline(segmentTextGenerator, mediaFileGenerator,
+		segmentMediaBinder, zeroLogger, workerPool, videoPublisher, videoCreator)
 
 	storySegmentController := controllers.NewStorySegmentsController(zeroLogger, videoCreatorPipeline)
 

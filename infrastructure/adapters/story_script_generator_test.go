@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"fmt"
+	"generate-script-lambda/application/ports/outbound"
 	"generate-script-lambda/config"
 	"github.com/panjf2000/ants/v2"
 	"strings"
@@ -24,10 +25,13 @@ func TestStoryScriptGeneratorIntegration_Generate(t *testing.T) {
 
 	logger := NewZerologWrapper()
 
-	generator := NewStoryScriptGenerator(wordsPerStory, gptConfig, workerPool, logger)
+	generator := NewStoryScriptGenerator(gptConfig, workerPool, logger)
 
 	ctx := context.Background()
-	output, errCh := generator.Generate(ctx, "drunken mermaid")
+	output, errCh := generator.Generate(ctx, outbound.GenerateStoryScriptRequest{
+		Input:         "The little siren",
+		WordsPerStory: 400,
+	})
 
 	var builder strings.Builder
 

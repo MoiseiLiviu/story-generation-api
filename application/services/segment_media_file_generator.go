@@ -115,14 +115,19 @@ func (s *segmentMediaFileGenerator) generateMediaFile(ctx context.Context, segme
 			VoiceID: voiceID,
 		})
 		if err != nil {
-			s.logger.Error(err, "Failed to generate audio")
+			s.logger.ErrorWithFields(err, "Failed to generate audio", map[string]interface{}{
+				"id": segment.ID,
+			})
 			return nil, err
 		}
 		mediaReader = reader
 	} else {
 		reader, err := s.imageCreator.Generate(ctx, segment.Text)
 		if err != nil {
-			s.logger.Error(err, "Failed to generate image")
+			s.logger.ErrorWithFields(err, "Failed to generate image", map[string]interface{}{
+				"id":   segment.ID,
+				"text": segment.Text,
+			})
 			return nil, err
 		}
 		mediaReader = reader

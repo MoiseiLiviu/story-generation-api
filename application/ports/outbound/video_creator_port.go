@@ -1,10 +1,14 @@
 package outbound
 
-type CreateVideoResponse struct {
-	FileName string
-	Duration float64
+import (
+	"generate-script-lambda/domain"
+)
+
+type VideoCreatorResponse struct {
+	VideoFileName string
+	VideoSegments []domain.VideoSegment
 }
 
-type SegmentVideoCreator interface {
-	Create(audioFileName string, imageFileName string) (*CreateVideoResponse, error)
+type VideoCreatorPort interface {
+	Create(segments []domain.AudioWithImageBackground) (*VideoCreatorResponse, error)
 }

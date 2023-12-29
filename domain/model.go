@@ -8,23 +8,22 @@ const (
 )
 
 type VideoSegment struct {
-	FileName string
 	Ordinal  int
 	Text     string
 	Duration float64
 	ID       string
 }
 
-type VideoSegmentsAscByOrdinal []VideoSegment
-
-func (a VideoSegmentsAscByOrdinal) Len() int           { return len(a) }
-func (a VideoSegmentsAscByOrdinal) Less(i, j int) bool { return a[i].Ordinal < a[j].Ordinal }
-func (a VideoSegmentsAscByOrdinal) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-
 type AudioWithImageBackground struct {
 	SegmentWithMediaFile
 	BackgroundImageFileName string
 }
+
+type AudioSegmentsAscByOrdinal []AudioWithImageBackground
+
+func (a AudioSegmentsAscByOrdinal) Len() int           { return len(a) }
+func (a AudioSegmentsAscByOrdinal) Less(i, j int) bool { return a[i].Ordinal < a[j].Ordinal }
+func (a AudioSegmentsAscByOrdinal) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
 type SegmentWithMediaFile struct {
 	FileName string
@@ -33,16 +32,6 @@ type SegmentWithMediaFile struct {
 
 func (s SegmentWithMediaFile) Equals(other SegmentWithMediaFile) bool {
 	return s.ID == other.ID
-}
-
-func NewSegment(text string, segmentType SegmentType, id string, storyID string, ordinal int) Segment {
-	return Segment{
-		Text:    text,
-		Type:    segmentType,
-		ID:      id,
-		StoryID: storyID,
-		Ordinal: ordinal,
-	}
 }
 
 const DefaultImageID = "default"

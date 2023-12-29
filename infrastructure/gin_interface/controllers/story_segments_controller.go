@@ -44,10 +44,11 @@ func (s *storySegmentsController) CreateStory(c *gin.Context) {
 	storyID := uuid.NewString()
 
 	res, err := s.videoCreatorPipeline.StartPipeline(newCtx, inbound.StartPipelineParams{
-		Input:   createStoryRequest.Input,
-		StoryID: storyID,
-		UserID:  createStoryRequest.UserID,
-		VoiceID: createStoryRequest.VoiceID,
+		Input:         createStoryRequest.Input,
+		StoryID:       storyID,
+		UserID:        createStoryRequest.UserID,
+		VoiceID:       createStoryRequest.VoiceID,
+		WordsPerStory: createStoryRequest.WordsPerStory,
 	})
 	if err != nil {
 		err = c.AbortWithError(500, err)

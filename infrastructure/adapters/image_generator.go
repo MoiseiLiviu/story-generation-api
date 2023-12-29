@@ -16,6 +16,7 @@ type DalleApiRequest struct {
 	Size           string `json:"size"`
 	Number         int    `json:"n"`
 	ResponseFormat string `json:"response_format"`
+	Model          string `json:"model"`
 }
 
 type DalleApiResponse struct {
@@ -81,10 +82,11 @@ func (i *imageGenerator) Generate(ctx context.Context, description string) (io.R
 
 func (i *imageGenerator) generateImageRequest(ctx context.Context, text string) (*http.Request, error) {
 	reqBody := DalleApiRequest{
-		Prompt:         fmt.Sprintf("%s, in a cartoon style", text),
-		Size:           "256x256",
+		Prompt:         fmt.Sprintf("%s, in a story tale style", text),
+		Size:           i.dalleConfig.Size,
 		Number:         1,
-		ResponseFormat: "b64_json",
+		ResponseFormat: "url",
+		Model:          i.dalleConfig.Model,
 	}
 
 	jsonPayload, err := json.Marshal(reqBody)
